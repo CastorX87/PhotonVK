@@ -1,3 +1,4 @@
+#define VK_USE_PLATFORM_WIN32_KHR
 #include "VKUtil.h"
 
 #ifdef NDEBUG
@@ -12,16 +13,15 @@ const int HEIGHT = 600;
 const std::vector<const char*> REQ_VAL_LAYERS = { "VK_LAYER_KHRONOS_validation" };
 const std::vector<const char*> REQ_EXTENSIONS = { "VK_KHR_surface", "VK_KHR_win32_surface", "VK_EXT_debug_report", "VK_EXT_debug_utils" };
 
-struct QueueFamilyIndices
+const size_t NUM_REQ_QUEUE_FAMILIES = 3;
+enum class QueueFamilyType
 {
-	std::optional<uint32_t> graphicsFamily;
-	std::optional<uint32_t> computeFamily;
-
-	bool isComplete()
-	{
-		return graphicsFamily.has_value() && computeFamily.has_value();
-	}
+	Graphics,
+	Presentation,
+	Compute
 };
+
+std::map<QueueFamilyType, uint32_t> families;
 
 class PhotonVK_Application
 {
@@ -34,21 +34,11 @@ private:
 
 		switch (messageSeverity)
 		{
-		case VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-			PRINT_VK_VERBOSE(msg);
-			break;
-		case VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-			PRINT_VK_INFO(msg);
-			break;
-		case VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-			PRINT_VK_WARNING(msg);
-			break;
-		case VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-			PRINT_VK_ERROR(msg);
-			break;
-		default:
-			PRINT_APP_COMMENT(msg);
-			break;
+			case VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:PRINT_VK_VERBOSE(msg);break;
+			case VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:PRINT_VK_INFO(msg);break;
+			case VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:PRINT_VK_WARNING(msg);break;
+			case VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:PRINT_VK_ERROR(msg);break;
+			default:PRINT_APP_COMMENT(msg);break;
 		}
 		return VK_FALSE;
 	}
@@ -81,8 +71,11 @@ private:
 	vk::PhysicalDevice				vkPhysicalDevice;
 	vk::Device							vkDevice;
 	vk::Queue							vkGraphicsQueue;
+	vk::Queue							vkPresentationQueue;
+	vk::Queue							vkComputeQueue;
 	vk::DispatchLoaderDynamic		vkDispatcher;
 	vk::DebugUtilsMessengerEXT		vkDebugMessenger;
+	vk::SurfaceKHR						vkSurface;
 
 	// ------------------------------------------------ //
 
@@ -154,7 +147,7 @@ private:
 
 	void pickPhysicalDevice() {
 		auto physDevices = vkInstance.enumeratePhysicalDevices();
-		
+
 		if (physDevices.size() == 0)
 			throw std::runtime_error("No Vulkan compatible devices found!");
 
@@ -172,55 +165,65 @@ private:
 		}
 	}
 
-	bool isDeviceSuitable(const vk::PhysicalDevice& device) {
+	bool isDeviceSuitable(const vk::PhysicalDevice & device) {
 		auto devProperties = device.getProperties();
 		auto devFeatures = device.getFeatures();
 
 		bool isDiscreteGpu = devProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu;
-		bool supportsQueues = findQueueFamilies(device).isComplete();
+		bool supportsQueues = findQueueFamilyIndices(device).size() == NUM_REQ_QUEUE_FAMILIES;
 
 		return isDiscreteGpu && supportsQueues;
 	}
 
-	QueueFamilyIndices findQueueFamilies(const vk::PhysicalDevice& device)
+	std::map<QueueFamilyType, uint32_t> findQueueFamilyIndices(const vk::PhysicalDevice & device)
 	{
-		QueueFamilyIndices indices;
+		std::map<QueueFamilyType, uint32_t> indices;
 		auto queueFamilyProps = device.getQueueFamilyProperties();
-		for(int i = 0; i < queueFamilyProps.size(); i++)
+		for (int i = 0; i < queueFamilyProps.size(); i++)
 		{
-			if(queueFamilyProps[i].queueCount > 0 && (queueFamilyProps[i].queueFlags & vk::QueueFlagBits::eGraphics))
-			{
-				indices.graphicsFamily = i;
-			}
-			if (queueFamilyProps[i].queueCount > 0 && (queueFamilyProps[i].queueFlags & vk::QueueFlagBits::eCompute))
-			{
-				indices.computeFamily = i;
-			}
-			if (indices.isComplete())
-				break;
+			if (queueFamilyProps[i].queueCount > 0 && (queueFamilyProps[i].queueFlags & vk::QueueFlagBits::eGraphics)) indices[QueueFamilyType::Graphics] = i;
+			if (queueFamilyProps[i].queueCount > 0 && (queueFamilyProps[i].queueFlags & vk::QueueFlagBits::eCompute)) indices[QueueFamilyType::Compute] = i;
+			if (queueFamilyProps[i].queueCount > 0 && device.getWin32PresentationSupportKHR(i, vkDispatcher)) indices[QueueFamilyType::Presentation] = i;
+			if (indices.size() == NUM_REQ_QUEUE_FAMILIES) break;
 		}
-
 		return indices;
 	}
 
+	void createLogicalDevice()
+	{
+		auto famIndices = findQueueFamilyIndices(vkPhysicalDevice);
 
+		std::set<uint32_t> uniFamIndices;
+		std::transform(famIndices.begin(), famIndices.end(), std::inserter(uniFamIndices, uniFamIndices.begin()), [](auto x) { return x.second; });
 
-	void createLogicalDevice() {
-		QueueFamilyIndices indices = findQueueFamilies(vkPhysicalDevice);
 		float prio = 1;
-		vk::DeviceQueueCreateInfo dqci = vk::DeviceQueueCreateInfo().setQueueFamilyIndex(indices.graphicsFamily.value()).setQueueCount(1).setPQueuePriorities(&prio);
-		
+
+		std::vector<vk::DeviceQueueCreateInfo> dqci_arr;
+		for (auto& queueFamilyIndex : uniFamIndices)
+		{
+			dqci_arr.push_back(vk::DeviceQueueCreateInfo().setQueueFamilyIndex(queueFamilyIndex).setQueueCount(1).setPQueuePriorities(&prio));
+		}
 		vk::PhysicalDeviceFeatures pdf;
-		
-		vk::DeviceCreateInfo dci = vk::DeviceCreateInfo().setQueueCreateInfoCount(1).setPQueueCreateInfos(&dqci).setPEnabledFeatures(&pdf);
+		vk::DeviceCreateInfo dci = vk::DeviceCreateInfo().setQueueCreateInfoCount(dqci_arr.size()).setPQueueCreateInfos(dqci_arr.data()).setPEnabledFeatures(&pdf);
 		dci.enabledLayerCount = enableValidationLayers ? static_cast<uint32_t>(REQ_VAL_LAYERS.size()) : 0;
 		dci.ppEnabledLayerNames = enableValidationLayers ? REQ_VAL_LAYERS.data() : nullptr;
 
 		vkDevice = vkPhysicalDevice.createDevice(dci);
-		
 		REGISTER_OBJ_NAME(vkDevice, VkDevice, vk::ObjectType::eDevice);
 
-		vkGraphicsQueue = vkDevice.getQueue(indices.graphicsFamily.value(), 0);
+		vkGraphicsQueue     = vkDevice.getQueue(famIndices[QueueFamilyType::Graphics], 0);
+		vkPresentationQueue = vkDevice.getQueue(famIndices[QueueFamilyType::Presentation], 0);
+		vkComputeQueue      = vkDevice.getQueue(famIndices[QueueFamilyType::Compute], 0);
+
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+	}
+
+	void createSurface()
+	{
+		if (glfwCreateWindowSurface((VkInstance)vkInstance, window, nullptr, reinterpret_cast<VkSurfaceKHR*>(&vkSurface)) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create window surface!");
+		}
 	}
 
 	// ------------------------------------------------ //
@@ -240,6 +243,7 @@ private:
 		createInstance();
 		setupDispatcher();
 		setupDebugMessenger();
+		createSurface();
 		pickPhysicalDevice();
 		createLogicalDevice();
 	}
@@ -254,14 +258,14 @@ private:
 
 	void cleanup()
 	{
-		//vkDevice.destroy();
+		vkDevice.destroy();
 		vkInstance.destroyDebugUtilsMessengerEXT(vkDebugMessenger, nullptr, vkDispatcher);
 		vkInstance.destroy();
 
 		glfwDestroyWindow(window);
 		glfwTerminate();
 	}
-	
+
 	// ------------------------------------------------ //
 };
 
