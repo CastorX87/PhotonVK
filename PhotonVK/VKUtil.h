@@ -2,6 +2,8 @@
 #ifndef _VKUTIL_H_
 #define _VKUTIL_H_
 
+#define STL_CONTAINS(collection,elemToFind) (std::find((collection).begin(), (collection).end(), elemToFind) != (collection).end())
+
 #define REGISTER_OBJ_NAME(var, VkObjType, objTypeEnum) {(var).setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(objTypeEnum, reinterpret_cast<uint64_t>((VkObjType)vkDevice), #var), vkDispatcher);}
 
 #define PRINT(x)              { std::cout << white  << (x) << std::endl; }
@@ -129,6 +131,21 @@ operator << (std::basic_ostream<_Elem, _Traits> & i, color & c)
 	HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
 	SetConsoleTextAttribute(hStdout, c.m_color);
 	return i;
+}
+
+static std::vector<char> readFile(const std::string& filename) {
+	std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+	if (!file.is_open()) {
+		throw std::runtime_error("failed to open file!");
+	}
+	size_t fileSize = (size_t)file.tellg();
+	std::vector<char> buffer(fileSize);
+	file.seekg(0);
+	file.read(buffer.data(), fileSize);
+	file.close();
+
+	return buffer;
 }
 
 #endif
