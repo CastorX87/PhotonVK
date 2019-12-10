@@ -169,6 +169,7 @@
     <ClCompile Include="VKUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Util.h" />
     <ClInclude Include="VKUtil.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

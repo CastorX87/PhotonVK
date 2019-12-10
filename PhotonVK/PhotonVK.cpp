@@ -1,4 +1,5 @@
 #define VK_USE_PLATFORM_WIN32_KHR
+#include "Util.h"
 #include "VKUtil.h"
 
 #ifdef NDEBUG
@@ -406,24 +407,9 @@ private:
 
 	void createRenderPass()
 	{
-		vk::AttachmentDescription color_attach_descr;
-		color_attach_descr.format = vkSwapChainImageFormat;
-		color_attach_descr.samples = vk::SampleCountFlagBits::e1;
-		color_attach_descr.loadOp = vk::AttachmentLoadOp::eClear;
-		color_attach_descr.storeOp = vk::AttachmentStoreOp::eStore;
-		color_attach_descr.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
-		color_attach_descr.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
-		color_attach_descr.initialLayout = vk::ImageLayout::eUndefined;
-		color_attach_descr.finalLayout = vk::ImageLayout::ePresentSrcKHR;
-
-		vk::AttachmentReference color_attach_ref;
-		color_attach_ref.attachment = 0;
-		color_attach_ref.layout = vk::ImageLayout::eColorAttachmentOptimal;
-
-		vk::SubpassDescription color_subpass_descr;
-		color_subpass_descr.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-		color_subpass_descr.colorAttachmentCount = 1;
-		color_subpass_descr.pColorAttachments = &color_attach_ref;
+		vk::AttachmentDescription color_attach_descr(vk::AttachmentDescriptionFlags(), vkSwapChainImageFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR);
+		vk::AttachmentReference color_attach_ref(0, vk::ImageLayout::eColorAttachmentOptimal);
+		vk::SubpassDescription color_subpass_descr(vk::SubpassDescriptionFlags(), vk::PipelineBindPoint::eGraphics, 0, nullptr, 1, &color_attach_ref, nullptr, nullptr, 0, nullptr);
 
 		vk::RenderPassCreateInfo renderpass_ci;
 		renderpass_ci.attachmentCount = 1;
@@ -436,111 +422,29 @@ private:
 
 	void createGraphicsPipeline()
 	{
-		auto vertShaderCode = readFile("shaders/vert.spv");
-		auto fragShaderCode = readFile("shaders/frag.spv");
+		vkVertShaderModule = vku::CreateShaderModule(vkDevice, readFile("shaders/vert.spv"));
+		vkFragShaderModule= vku::CreateShaderModule(vkDevice, readFile("shaders/frag.spv"));
 
-		vkVertShaderModule = createShaderModule(vertShaderCode);
-		vkFragShaderModule= createShaderModule(fragShaderCode);
-
-		vk::PipelineShaderStageCreateInfo pssciVS = {};
-		pssciVS.setModule(vkVertShaderModule);
-		pssciVS.setStage(vk::ShaderStageFlagBits::eVertex);
-		pssciVS.setPName("main");
-
-		vk::PipelineShaderStageCreateInfo pssciFS = {};
-		pssciFS.setModule(vkFragShaderModule);
-		pssciFS.setStage(vk::ShaderStageFlagBits::eFragment);
-		pssciFS.setPName("main");
-
+		vk::PipelineShaderStageCreateInfo pssciVS(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eVertex, vkVertShaderModule, "main");
+		vk::PipelineShaderStageCreateInfo pssciFS(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eFragment, vkFragShaderModule, "main");
 		vk::PipelineShaderStageCreateInfo pssciArr[] = { pssciVS, pssciFS };
-
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
-		vertexInputInfo.vertexBindingDescriptionCount = 0;
-		vertexInputInfo.vertexAttributeDescriptionCount = 0;
-
-		vk::PipelineInputAssemblyStateCreateInfo inputAssembly;
-		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
-		inputAssembly.primitiveRestartEnable = false;
-
-		vk::Viewport viewport;
-		viewport.x = 0;
-		viewport.y = 0;
-		viewport.width = (float)vkSwapChainExtent.width;
-		viewport.height = (float)vkSwapChainExtent.height;
-		viewport.minDepth = 0;
-		viewport.maxDepth = 1;
-
-		vk::Rect2D scissor;
-		scissor.offset.x = 0;
-		scissor.offset.y = 0;
-		scissor.extent = vkSwapChainExtent;
-
-		vk::PipelineViewportStateCreateInfo pvstci;
-		pvstci.viewportCount = 1;
-		pvstci.pViewports = &viewport;
-		pvstci.scissorCount = 1;
-		pvstci.pScissors = &scissor;
-
-		vk::PipelineRasterizationStateCreateInfo prsci;
-		prsci.depthClampEnable = false;
-		prsci.rasterizerDiscardEnable = false;
-		prsci.polygonMode = vk::PolygonMode::eFill;
-		prsci.lineWidth = 1;
-		prsci.cullMode = vk::CullModeFlagBits::eBack;
-		prsci.frontFace = vk::FrontFace::eClockwise;
-		prsci.depthBiasEnable = false;
-
-		vk::PipelineMultisampleStateCreateInfo pmsci;
-		pmsci.sampleShadingEnable = false;
-		pmsci.rasterizationSamples = vk::SampleCountFlagBits::e1;
-
-		vk::PipelineColorBlendAttachmentState cba;
-		cba.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-		cba.blendEnable = false;
-
-		vk::PipelineColorBlendStateCreateInfo colorBlending;
-		colorBlending.logicOpEnable = false;
-		colorBlending.logicOp = vk::LogicOp::eCopy;
-		colorBlending.attachmentCount = 1;
-		colorBlending.pAttachments = &cba;
-		colorBlending.blendConstants[0] = 0;
-		colorBlending.blendConstants[1] = 0;
-		colorBlending.blendConstants[2] = 0;
-		colorBlending.blendConstants[3] = 0;
-
-		vk::PipelineLayoutCreateInfo plci;
-		plci.setLayoutCount = 0;
-		plci.pushConstantRangeCount = 0;
-
+		vk::PipelineInputAssemblyStateCreateInfo inputAssembly(vk::PipelineInputAssemblyStateCreateFlags(), vk::PrimitiveTopology::eTriangleList, false);
+		vk::Viewport viewport(0,0, (float)vkSwapChainExtent.width, (float)vkSwapChainExtent.height, 0, 1);
+		vk::Rect2D scissor(vk::Offset2D(0,0), vkSwapChainExtent);
+		vk::PipelineViewportStateCreateInfo pvstci(vk::PipelineViewportStateCreateFlags(), 1, &viewport, 1, &scissor);
+		vk::PipelineRasterizationStateCreateInfo prsci(vk::PipelineRasterizationStateCreateFlags(), false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eClockwise, false, 0, 0, 0, 1);
+		vk::PipelineMultisampleStateCreateInfo pmsci(vk::PipelineMultisampleStateCreateFlags(), vk::SampleCountFlagBits::e1, 0,0, nullptr,false,0);
+		vk::PipelineColorBlendAttachmentState cba(false,vk::BlendFactor::eZero, vk::BlendFactor::eZero,vk::BlendOp::eAdd, vk::BlendFactor::eZero, vk::BlendFactor::eZero,vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+		vk::PipelineColorBlendStateCreateInfo colorBlending(vk::PipelineColorBlendStateCreateFlags(), false, vk::LogicOp::eClear, 1, &cba, std::array<float, 4> { 0, 0, 0, 0 });
+		vk::PipelineLayoutCreateInfo plci(vk::PipelineLayoutCreateFlags(), 0, nullptr, 0, nullptr);
 		vkPipelineLayout = vkDevice.createPipelineLayout(plci);
-
-		vk::GraphicsPipelineCreateInfo gpci;
-		gpci.stageCount = 2;
-		gpci.pStages = pssciArr;
-		gpci.pVertexInputState = &vertexInputInfo;
-		gpci.pInputAssemblyState = &inputAssembly;
-		gpci.pViewportState = &pvstci;
-		gpci.pRasterizationState = &prsci;
-		gpci.pMultisampleState = &pmsci;
-		gpci.pColorBlendState = &colorBlending;
-		gpci.layout = vkPipelineLayout;
-		gpci.renderPass = vkRenderPass;
-		gpci.subpass = 0;
-		gpci.basePipelineHandle = vk::Pipeline();
+		vk::GraphicsPipelineCreateInfo gpci(vk::PipelineCreateFlags(),2,pssciArr,&vertexInputInfo,&inputAssembly,nullptr, &pvstci, &prsci, &pmsci,nullptr, &colorBlending,nullptr, vkPipelineLayout, vkRenderPass);
 
 		vkGraphicsPipeline = vkDevice.createGraphicsPipeline(vk::PipelineCache(), gpci);
 
 		vkDevice.destroy(vkVertShaderModule);
 		vkDevice.destroy(vkFragShaderModule);
-	}
-
-	vk::ShaderModule createShaderModule(const std::vector<char>& code)
-	{
-		vk::ShaderModuleCreateInfo smci;
-		smci.codeSize = code.size();
-		smci.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-		return vkDevice.createShaderModule(smci);
 	}
 
 	void mainLoop()
